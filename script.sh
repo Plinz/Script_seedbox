@@ -6,7 +6,7 @@ declare -A htpass
 
 source script.conf
 
-:'
+: '
 	echo "[SCRIPT xmlrpc-c] BEGIN INSTALL"
 	cd /tmp
 	echo "[SCRIPT xmlrpc-c] svn checkout"
@@ -160,37 +160,37 @@ ssh $server << EOF
 EOF
 
 for unixpass_idx in ${!unixpass[@]}; do
-	ssh $server << EOF
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] BEGIN add user"
-		useradd --shell /bin/bash --create-home ${users[$unixpass_idx]}
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] SET unix passwd"
-		echo '${users[$unixpass_idx]}:${unixpass[$unixpass_idx]}' | chpasswd 
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] cp .rtorrent"
-		cp /root/conf/.rtorrent.rc_${users[$unixpass_idx]} /home/${users[$unixpass_idx]}/.rtorrent.rc
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] mkdir filesys"
-		mkdir /home/${users[$unixpass_idx]}/{torrents,perso,.session,watch}
-		mkdir /home/${users[$unixpass_idx]}/torrents/{movies,series,musics}
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod"
-		chown --recursive ${users[$unixpass_idx]}:${users[$unixpass_idx]} /home/${users[$unixpass_idx]}
-		chmod 755 /home/${users[$unixpass_idx]}
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] htpasswd"
-		htpasswd -b /etc/nginx/auth/seedbox_auth ${users[$unixpass_idx]} ${htpass[$unixpass_idx]}
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod for nginx"
-		chmod 777 /etc/nginx/auth/seedbox_auth
-		chown www-data:www-data /etc/nginx/auth/*
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] rutorrent config"
-		mkdir /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}
-		cp /root/conf/config.php_${users[$unixpass_idx]} /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}/config.php
-		chown -R www-data:www-data /var/www/html
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] nginx restart"
-		service nginx restart
-		cp /root/conf/${users[$unixpass_idx]}-rtorrent /etc/init.d/
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] update service rtorrent"
-		update-rc.d ${users[$unixpass_idx]}-rtorrent defaults
-		echo "[SCRIPT CONF ${users[$unixpass_idx]}] start service rtorrent"
-		service ${users[$unixpass_idx]}-rtorrent start
-	EOF
-	echo "PROCESS for ${users[$unixpass_idx]} done";
+ssh $server << EOF
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] BEGIN add user"
+	useradd --shell /bin/bash --create-home ${users[$unixpass_idx]}
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] SET unix passwd"
+	echo '${users[$unixpass_idx]}:${unixpass[$unixpass_idx]}' | chpasswd 
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] cp .rtorrent"
+	cp /root/conf/.rtorrent.rc_${users[$unixpass_idx]} /home/${users[$unixpass_idx]}/.rtorrent.rc
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] mkdir filesys"
+	mkdir /home/${users[$unixpass_idx]}/{torrents,perso,.session,watch}
+	mkdir /home/${users[$unixpass_idx]}/torrents/{movies,series,musics}
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod"
+	chown --recursive ${users[$unixpass_idx]}:${users[$unixpass_idx]} /home/${users[$unixpass_idx]}
+	chmod 755 /home/${users[$unixpass_idx]}
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] htpasswd"
+	htpasswd -b /etc/nginx/auth/seedbox_auth ${users[$unixpass_idx]} ${htpass[$unixpass_idx]}
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod for nginx"
+	chmod 777 /etc/nginx/auth/seedbox_auth
+	chown www-data:www-data /etc/nginx/auth/*
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] rutorrent config"
+	mkdir /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}
+	cp /root/conf/config.php_${users[$unixpass_idx]} /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}/config.php
+	chown -R www-data:www-data /var/www/html
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] nginx restart"
+	service nginx restart
+	cp /root/conf/${users[$unixpass_idx]}-rtorrent /etc/init.d/
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] update service rtorrent"
+	update-rc.d ${users[$unixpass_idx]}-rtorrent defaults
+	echo "[SCRIPT CONF ${users[$unixpass_idx]}] start service rtorrent"
+	service ${users[$unixpass_idx]}-rtorrent start
+EOF
+echo "PROCESS for ${users[$unixpass_idx]} done";
 done
 
 ssh $server << EOF
