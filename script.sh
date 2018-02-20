@@ -1,99 +1,203 @@
-#!/bin/sh
+#!/bin/bash
 
-#root@IP
-server = ""
+declare -A users
+declare -A unixpass
+declare -A htpass
 
-#All the users
-1 = ""
-2 = ""
-3 = ""
-4 = ""
-5 = ""
-6 = ""
+source script.conf
 
-#Password for users
-A = ""
-B = ""
-C = ""
-D = ""
-E = ""
-F = ""
+:'
+	echo "[SCRIPT xmlrpc-c] BEGIN INSTALL"
+	cd /tmp
+	echo "[SCRIPT xmlrpc-c] svn checkout"
+	svn checkout http://svn.code.sf.net/p/xmlrpc-c/code/stable xmlrpc-c
+	cd xmlrpc-c/
+	echo "[SCRIPT xmlrpc-c] ./configure"
+	./configure
+	echo "[SCRIPT xmlrpc-c] .make -j $(nproc)"
+	make -j $(nproc)
+	echo "[SCRIPT xmlrpc-c] .make install"
+	make install
+	echo "[SCRIPT xmlrpc-c] END INSTALL"
 
+	echo "[SCRIPT libtorrent] BEGIN INSTALL"
+	cd /tmp
+	echo "[SCRIPT libtorrent] git clone"
+	git clone https://github.com/rakshasa/libtorrent.git
+	cd libtorrent
+	echo "[SCRIPT libtorrent] git checkout"
+	git checkout `git tag | tail -1`
+	echo "[SCRIPT libtorrent] apply patch"
+	git apply /root/conf/openssl.patch
+	echo "[SCRIPT libtorrent] ./autogen.sh"
+	./autogen.sh
+	echo "[SCRIPT libtorrent] ./configure"
+	./configure
+	echo "[SCRIPT libtorrent] make -j $(nproc)"
+	make -j $(nproc)
+	echo "[SCRIPT libtorrent] make install"
+	make install
+	echo "[SCRIPT libtorrent] END INSTALL"
 
+	echo "[SCRIPT rtorrent] BEGIN INSTALL"
+	cd /tmp
+	echo "[SCRIPT rtorrent] git clone"
+	git clone https://github.com/rakshasa/rtorrent.git
+	cd rtorrent
+	echo "[SCRIPT rtorrent] git checkout"
+	git checkout `git tag | tail -1`
+	echo "[SCRIPT rtorrent] ./autogen.sh"
+	./autogen.sh
+	echo "[SCRIPT rtorrent] ./configure"
+	./configure --with-xmlrpc-c
+	echo "[SCRIPT rtorrent] make -j $(nproc)"
+	make -j $(nproc)
+	echo "[SCRIPT rtorrent] make install"
+	make install
+	echo "[SCRIPT rtorrent] END INSTALL"
 
-ssh "$server" "mkdir /etc/apt/sources.list.d/"
-scp "sources.list" "$server:/etc/apt/"
-ssh "$server" "wget --no-check-certificate https://www.dotdeb.org/dotdeb.gpg && apt-key add dotdeb.gpg"
-ssh "$server" "wget http://www.deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2016.8.1_all.deb"
-ssh "$server" "dpkg -i deb-multimedia-keyring_2016.8.1_all.deb"
-scp "dotdeb.list" "$server:/etc/apt/sources.list.d/dotdeb.list"
-scp "deb-multimedia.list" "$server:/etc/apt/sources.list.d/deb-multimedia.list"
-ssh "$server" "apt-get update"
-ssh "$server" "apt-get install automake libcppunit-dev libtool build-essential pkg-config libssl-dev libcurl4-openssl-dev libsigc++-2.0-dev libncurses5-dev screen subversion apache2-utils curl php7.0 php7.0-fpm php7.0-cli php7.0-curl php7.0-geoip git unzip unrar rar zip ffmpeg buildtorrent mediainfo zlib1g-dev"
+	echo "[SCRIPT] ldconfig"
+	ldconfig
+'
 
-ssh "$server" "cd /tmp && svn checkout http://svn.code.sf.net/p/xmlrpc-c/code/stable xmlrpc-c && cd xmlrpc-c/ && ./configure && make -j $(nproc) && make install"
-ssh "$server" "cd /tmp && git clone https://github.com/rakshasa/libtorrent.git && cd libtorrent && git checkout `git tag | tail -1`"
-scp "openssl.patch" "$server:/tmp/libtorrent/openssl.patch"
-ssh "$server" "cd /tmp/libtorrent/ && ./autogen.sh && ./configure && make -j $(nproc) && make install"
-ssh "$server" "cd /tmp && git clone https://github.com/rakshasa/rtorrent.git && cd rtorrent && git checkout `git tag | tail -1` && ./autogen.sh && ./configure --with-xmlrpc-c && make -j $(nproc) && make install && ldconfig"
+echo "[SCRIPT users conf] BEGIN"
+cp "seedbox" "conf/"
+for users_idx in ${!users[@]}; do
+	echo "[SCRIPT users conf] BEGIN user=${users[$users_idx]} idx=$users_idx maj=${users[$users_idx]^^}"
+	echo "[SCRIPT users conf] update seedbox"
+	echo -e "\n location /${users[$users_idx]^^} {\n     include scgi_params;\n     scgi_pass 127.0.0.1:500$users_idx;\n     auth_basic \"Restricted Area\";\n     auth_basic_user_file \"/etc/nginx/auth/seedbox_auth ${users[$users_idx]}\";\n }\n">>"conf/seedbox"
+	echo "[SCRIPT users conf] generate rtorrent.rc_${users[$users_idx]} file"
+	cp ".rtorrent.rc" "conf/.rtorrent.rc_${users[$users_idx]}"
+	content="$(<conf/.rtorrent.rc_${users[$users_idx]})"
+	echo -en "scgi_port = 127.0.0.1:500$users_idx\n$content" >conf/.rtorrent.rc_${users[$users_idx]}
+	sed -i -e "s/USERTEST/${users[$users_idx]}/g" conf/.rtorrent.rc_${users[$users_idx]}
+	echo "[SCRIPT users conf] generate config.php_${users[$users_idx]} file"
+	echo -e "<?php\n \n\$pathToExternals['curl'] = '/usr/bin/curl';\n\$topDirectory = '/home/${users[$users_idx]}';\n\$scgi_port = 500$users_idx;\n\$scgi_host = '127.0.0.1';\n\$XMLRPCMountPoint = '/${users[$users_idx]^^}';\n">"conf/config.php_${users[$users_idx]}"
+	echo "[SCRIPT users conf] generate ${users[$users_idx]}-rtorrent file"
+	cp "USERTEST-rtorrent" "conf/${users[$users_idx]}-rtorrent"
+	sed -i -e "s/USERTEST/${users[$users_idx]}/g" conf/${users[$users_idx]}-rtorrent
+done
+echo "}">>"conf/seedbox"
 
-ssh "$server" "mkdir -p /var/www/html && cd /var/www/html && git clone https://github.com/Novik/ruTorrent.git rutorrent"
-ssh "$server" "cd /var/www/html/rutorrent/plugins/ && git clone https://github.com/xombiemp/rutorrentMobile.git mobile && chown -R www-data:www-data /var/www/html/rutorrent"
-scp "conf.php" "$server:/var/www/html/rutorrent/plugins/create/conf.php"
-scp "php.ini" "$server:/etc/php/7.0/fpm/php.ini"
-ssh "$server" "service php7.0-fpm restart"
+scp -r "conf" "$server:/root/"
 
-ssh "$server" "wget http://nginx.org/keys/nginx_signing.key && apt-key add nginx_signing.key && rm nginx_signing.key"
-scp "nginx-mainline.list" "$server:/etc/apt/sources.list.d/nginx-mainline.list"
-ssh "$server" "apt-get update && apt-get install nginx && cd /etc/nginx && mkdir auth && rm nginx.conf"
-scp "nginx.conf" "$server:/etc/nginx/nginx.conf"
-ssh "$server" "cd /etc/nginx && rm conf.d/* && mkdir sites-enabled && mkdir ssl"
-scp "seedbox" "$server:/etc/nginx/sites-enables/seedbox"
-ssh "$server" "cd /etc/nginx/ssl && openssl ecparam -genkey -name secp384r1 -out seedbox.key &&  openssl req -new -key seedbox.key -sha256 -out seedbox.csr && openssl req -x509 -days 3650 -sha256 -key seedbox.key -in seedbox.csr -out seedbox.crt"
-ssh "$server" "chmod 644 /etc/nginx/ssl/*.crt && chmod 640 /etc/nginx/ssl/*.key"
-ssh "$server" "useradd --shell /bin/bash --create-home $1 && echo \"$1:$A\" && chpasswd"
-ssh "$server" "useradd --shell /bin/bash --create-home $2 && echo \"$2:$B\" && chpasswd"
-ssh "$server" "useradd --shell /bin/bash --create-home $3 && echo \"$3:$C\" && chpasswd"
-ssh "$server" "useradd --shell /bin/bash --create-home $4 && echo \"$4:$D\" && chpasswd"
-ssh "$server" "useradd --shell /bin/bash --create-home $5 && echo \"$5:$E\" && chpasswd"
-ssh "$server" "useradd --shell /bin/bash --create-home $6 && echo \"$6:$F\" && chpasswd"
-scp "/$1/.rtorrent.rc" "$server:/home/$1/.rtorrent.rc"
-scp "/$2/.rtorrent.rc" "$server:/home/$2/.rtorrent.rc"
-scp "/$3/.rtorrent.rc" "$server:/home/$3/.rtorrent.rc"
-scp "/$4/.rtorrent.rc" "$server:/home/$4/.rtorrent.rc"
-scp "/$5/.rtorrent.rc" "$server:/home/$5/.rtorrent.rc"
-scp "/$6/.rtorrent.rc" "$server:/home/$6/.rtorrent.rc"
-ssh "$server" "mkdir /home/$1/{torrents,perso,.session,watch} && chown --recursive $1:$1 /home/$1"
-ssh "$server" "mkdir /home/$2/{torrents,perso,.session,watch} && chown --recursive $2:$2 /home/$2"
-ssh "$server" "mkdir /home/$3/{torrents,perso,.session,watch} && chown --recursive $3:$3 /home/$3"
-ssh "$server" "mkdir /home/$4/{torrents,perso,.session,watch} && chown --recursive $4:$4 /home/$4"
-ssh "$server" "mkdir /home/$5/{torrents,perso,.session,watch} && chown --recursive $5:$5 /home/$5"
-ssh "$server" "mkdir /home/$6/{torrents,perso,.session,watch} && chown --recursive $6:$6 /home/$6"
-ssh "$server" "chown root:root /home/{$1,$2,$3,$4,$5,$6} && chmod 755 /home/{$1,$2,$3,$4,$5,$6}"
-ssh "$server" "echo \"$A\" && htpasswd -i -c /etc/nginx/auth/seedbox_auth $1 && mkdir /var/www/html/rutorrent/conf/users/$1"
-ssh "$server" "echo \"$B\" && htpasswd -i /etc/nginx/auth/seedbox_auth $2 && mkdir /var/www/html/rutorrent/conf/users/$2"
-ssh "$server" "echo \"$C\" && htpasswd -i /etc/nginx/auth/seedbox_auth $3 && mkdir /var/www/html/rutorrent/conf/users/$3"
-ssh "$server" "echo \"$D\" && htpasswd -i /etc/nginx/auth/seedbox_auth $4 && mkdir /var/www/html/rutorrent/conf/users/$4"
-ssh "$server" "echo \"$E\" && htpasswd -i /etc/nginx/auth/seedbox_auth $5 && mkdir /var/www/html/rutorrent/conf/users/$5"
-ssh "$server" "echo \"$F\" && htpasswd -i /etc/nginx/auth/seedbox_auth $6 && mkdir /var/www/html/rutorrent/conf/users/$6"
-ssh "$server" "chmod 777 /etc/nginx/auth/seedbox_auth && chown www-data:www-data /etc/nginx/auth/*"
-scp "/$1/config.php" "$server:/var/www/html/rutorrent/conf/users/$1/config.php"
-scp "/$2/config.php" "$server:/var/www/html/rutorrent/conf/users/$2/config.php"
-scp "/$3/config.php" "$server:/var/www/html/rutorrent/conf/users/$3/config.php"
-scp "/$4/config.php" "$server:/var/www/html/rutorrent/conf/users/$4/config.php"
-scp "/$5/config.php" "$server:/var/www/html/rutorrent/conf/users/$5/config.php"
-scp "/$6/config.php" "$server:/var/www/html/rutorrent/conf/users/$6/config.php"
-ssh "$server" "chown -R www-data:www-data /var/www/html && service nginx restart"
+ssh $server << EOF
+	DEBIAN_FRONTEND=noninteractive
+	cp /root/conf/sources.list /etc/apt/
+	wget --no-check-certificate https://www.dotdeb.org/dotdeb.gpg && apt-key add dotdeb.gpg
+	wget http://www.deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2016.8.1_all.deb
+	dpkg -i deb-multimedia-keyring_2016.8.1_all.deb
+	echo -e "#Dotdeb\ndeb http://packages.dotdeb.org stretch all\ndeb-src http://packages.dotdeb.org stretch all" > /etc/apt/sources.list.d/dotdeb.list
+	echo -e "#Deb-Multimedia\ndeb http://www.deb-multimedia.org stretch main non-free" > /etc/apt/sources.list.d/deb-multimedia.list
+	apt-get update
+	apt-get -y install automake libcppunit-dev libtool build-essential pkg-config libssl-dev libcurl4-openssl-dev libsigc++-2.0-dev libncurses5-dev screen subversion apache2-utils
+	apt-get -y install curl php7.0 php7.0-fpm php7.0-cli php7.0-curl php7.0-geoip git unzip unrar rar zip ffmpeg buildtorrent mediainfo zlib1g-dev apt-transport-https rtorrent sox
 
-scp "/$1/$1-rtorrent" "$server:/etc/init.d/$1-rtorrent"
-scp "/$2/$2-rtorrent" "$server:/etc/init.d/$2-rtorrent"
-scp "/$3/$3-rtorrent" "$server:/etc/init.d/$3-rtorrent"
-scp "/$4/$4-rtorrent" "$server:/etc/init.d/$4-rtorrent"
-scp "/$5/$5-rtorrent" "$server:/etc/init.d/$5-rtorrent"
-scp "/$6/$6-rtorrent" "$server:/etc/init.d/$6-rtorrent"
-ssh "$server" "update-rc.d $1-rtorrent defaults && update-rc.d $2-rtorrent defaults && update-rc.d $3-rtorrent defaults && update-rc.d $4-rtorrent defaults && update-rc.d $5-rtorrent defaults && update-rc.d $6-rtorrent defaults"
-ssh "$server" "service $1-rtorrent start && service $2-rtorrent start && service $3-rtorrent start && service $4-rtorrent start && service $5-rtorrent start && service $6-rtorrent start"
+	echo "[SCRIPT rutorrent] BEGIN INSTALL"
+	mkdir -p /var/www/html
+	cd /var/www/html
+	echo "[SCRIPT rutorrent] git clone rutorrent"
+	git clone https://github.com/Novik/ruTorrent.git rutorrent
+	cd rutorrent/plugins/
+	echo "[SCRIPT rutorrent] git clone mobile plugin"
+	git clone https://github.com/xombiemp/rutorrentMobile.git mobile
+	echo "[SCRIPT rutorrent] chown -R www-data:www-data /var/www/html/rutorrent"
+	chown -R www-data:www-data /var/www/html/rutorrent
+	echo "[SCRIPT rutorrent] copy rutorrent conf.php"
+	cp /root/conf/conf.php create/
+	echo "[SCRIPT rutorrent] END INSTALL"
 
+	echo "[SCRIPT php] copy php conf"
+	cp /root/conf/php.ini /etc/php/7.0/fpm/
+	echo "[SCRIPT php] service restart php"
+	service php7.0-fpm restart
+	
+	echo "[SCRIPT nginx] BEGIN INSTALL"
+	cd
+	echo "[SCRIPT nginx] wget nginw key and add"
+	wget http://nginx.org/keys/nginx_signing.key
+	apt-key add nginx_signing.key
+	rm nginx_signing.key
+	echo "[SCRIPT nginx] add repository"
+	echo -e "#NGinx Mainline\ndeb http://nginx.org/packages/debian/ stretch nginx\ndeb-src http://nginx.org/packages/debian/ stretch nginx" > /etc/apt/sources.list.d/nginx-mainline.list
+	echo "[SCRIPT nginx] update"	
+	apt-get update
+	echo "[SCRIPT nginx] install nginx"
+	apt-get -y install nginx
 
-scp "plexmediaserver.list" "$server:/etc/apt/sources.list.d/plexmediaserver.list"
-ssh "$server" "curl https://downloads.plex.tv/plex-keys/PlexSign.key | apt-key add - && apt-get update && apt-get install plexmediaserver && service plexmediaserver restart"
+	echo "[SCRIPT nginx] BEGIN CONFIGURE nginx"
+	cd /etc/nginx/
+	rm conf.d/*.conf
+	mkdir auth sites-enabled ssl
+	echo "[SCRIPT nginx] cp nginx.conf"
+	cp /root/conf/nginx.conf .
+	echo "[SCRIPT nginx] cp seedbox"
+	cp /root/conf/seedbox sites-enabled/
+	touch auth/seedbox_auth
+	echo "[SCRIPT nginx] SSL BEGIN"
+	cd /etc/nginx/ssl/
+	openssl ecparam -genkey -name secp384r1 -out seedbox.key
+	openssl req -subj '/C=US/ST=Oregon/L=Portland/CN=LaGrosseBertha' -new -key seedbox.key -sha256 -out seedbox.csr
+	openssl req -x509 -days 3650 -sha256 -key seedbox.key -in seedbox.csr -out seedbox.crt
+	echo "[SCRIPT nginx] SSL chmod"
+	chmod 644 /etc/nginx/ssl/*.crt
+	chmod 640 /etc/nginx/ssl/*.key
+	echo "[SCRIPT nginx] SSL END"
+	echo "[SCRIPT nginx] END INSTALL"
+
+	echo "[SCRIPT plex] BEGIN INSTALL"
+	echo "[SCRIPT plex] source"
+	echo -e "#PlexMediaServer\ndeb https://downloads.plex.tv/repo/deb ./public main" > /etc/apt/sources.list.d/old_plexmediaserver.list
+	echo "[SCRIPT plex] curl key"
+	curl https://downloads.plex.tv/plex-keys/PlexSign.key | apt-key add -
+	echo "[SCRIPT plex] apt update"
+	apt-get update
+	echo "[SCRIPT plex] apt install plex"
+	apt-get -y install plexmediaserver
+	echo "[SCRIPT plex] service plex start"
+	service plexmediaserver restart
+	echo "[SCRIPT plex] END INSTALL"
+EOF
+
+for unixpass_idx in ${!unixpass[@]}; do
+	ssh $server << EOF
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] BEGIN add user"
+		useradd --shell /bin/bash --create-home ${users[$unixpass_idx]}
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] SET unix passwd"
+		echo '${users[$unixpass_idx]}:${unixpass[$unixpass_idx]}' | chpasswd 
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] cp .rtorrent"
+		cp /root/conf/.rtorrent.rc_${users[$unixpass_idx]} /home/${users[$unixpass_idx]}/.rtorrent.rc
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] mkdir filesys"
+		mkdir /home/${users[$unixpass_idx]}/{torrents,perso,.session,watch}
+		mkdir /home/${users[$unixpass_idx]}/torrents/{movies,series,musics}
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod"
+		chown --recursive ${users[$unixpass_idx]}:${users[$unixpass_idx]} /home/${users[$unixpass_idx]}
+		chmod 755 /home/${users[$unixpass_idx]}
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] htpasswd"
+		htpasswd -b /etc/nginx/auth/seedbox_auth ${users[$unixpass_idx]} ${htpass[$unixpass_idx]}
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod for nginx"
+		chmod 777 /etc/nginx/auth/seedbox_auth
+		chown www-data:www-data /etc/nginx/auth/*
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] rutorrent config"
+		mkdir /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}
+		cp /root/conf/config.php_${users[$unixpass_idx]} /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}/config.php
+		chown -R www-data:www-data /var/www/html
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] nginx restart"
+		service nginx restart
+		cp /root/conf/${users[$unixpass_idx]}-rtorrent /etc/init.d/
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] update service rtorrent"
+		update-rc.d ${users[$unixpass_idx]}-rtorrent defaults
+		echo "[SCRIPT CONF ${users[$unixpass_idx]}] start service rtorrent"
+		service ${users[$unixpass_idx]}-rtorrent start
+	EOF
+	echo "PROCESS for ${users[$unixpass_idx]} done";
+done
+
+ssh $server << EOF
+	echo "[SCRIPT nginx] chow auth"
+	chown www-data:www-data /etc/nginx/auth/*
+	echo "[SCRIPT rtorrent] chow rtorrent"
+	chown -R www-data:www-data /var/www/html
+	echo "[SCRIPT nginx] service nginx restart"
+	service nginx restart
+EOF
