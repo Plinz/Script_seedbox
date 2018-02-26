@@ -61,11 +61,12 @@ source script.conf
 '
 
 echo "[SCRIPT users conf] BEGIN"
-cp "seedbox" "conf/"
+cp "seedbox" "conf/$serverName"
+sed -i -e "s/seedbox/$serverName/g" conf/$serverName
 for users_idx in ${!users[@]}; do
 	echo "[SCRIPT users conf] BEGIN user=${users[$users_idx]} idx=$users_idx maj=${users[$users_idx]^^}"
-	echo "[SCRIPT users conf] update seedbox"
-	echo -e "\n location /${users[$users_idx]^^} {\n     include scgi_params;\n     scgi_pass 127.0.0.1:500$users_idx;\n     auth_basic \"Restricted Area\";\n     auth_basic_user_file \"/etc/nginx/auth/seedbox_auth ${users[$users_idx]}\";\n }\n">>"conf/seedbox"
+	echo "[SCRIPT users conf] update $serverName"
+	echo -e "\n location /${users[$users_idx]^^} {\n     include scgi_params;\n     scgi_pass 127.0.0.1:500$users_idx;\n     auth_basic \"Restricted Area\";\n     auth_basic_user_file \"/etc/nginx/auth/$serverName_auth ${users[$users_idx]}\";\n }\n">>"conf/$serverName"
 	echo "[SCRIPT users conf] generate rtorrent.rc_${users[$users_idx]} file"
 	cp ".rtorrent.rc" "conf/.rtorrent.rc_${users[$users_idx]}"
 	content="$(<conf/.rtorrent.rc_${users[$users_idx]})"
@@ -77,11 +78,11 @@ for users_idx in ${!users[@]}; do
 	cp "USERTEST-rtorrent" "conf/${users[$users_idx]}-rtorrent"
 	sed -i -e "s/USERTEST/${users[$users_idx]}/g" conf/${users[$users_idx]}-rtorrent
 done
-echo "}">>"conf/seedbox"
+echo "}">>"conf/$serverName"
 
-scp -r "conf" "$server:/root/"
+scp -r "conf" "$serverIP:/root/"
 
-ssh $server << EOF
+ssh $serverIP << EOF
 	DEBIAN_FRONTEND=noninteractive
 	cp /root/conf/sources.list /etc/apt/
 	wget --no-check-certificate https://www.dotdeb.org/dotdeb.gpg && apt-key add dotdeb.gpg
@@ -131,14 +132,14 @@ ssh $server << EOF
 	mkdir auth sites-enabled ssl
 	echo "[SCRIPT nginx] cp nginx.conf"
 	cp /root/conf/nginx.conf .
-	echo "[SCRIPT nginx] cp seedbox"
-	cp /root/conf/seedbox sites-enabled/
-	touch auth/seedbox_auth
+	echo "[SCRIPT nginx] cp $serverName"
+	cp /root/conf/$serverName sites-enabled/
+	touch auth/$serverName_auth
 	echo "[SCRIPT nginx] SSL BEGIN"
 	cd /etc/nginx/ssl/
-	openssl ecparam -genkey -name secp384r1 -out seedbox.key
-	openssl req -subj '/C=US/ST=Oregon/L=Portland/CN=LaGrosseBertha' -new -key seedbox.key -sha256 -out seedbox.csr
-	openssl req -x509 -days 3650 -sha256 -key seedbox.key -in seedbox.csr -out seedbox.crt
+	openssl ecparam -genkey -name secp384r1 -out $serverName.key
+	openssl req -subj '/C=US/ST=Oregon/L=Portland/CN=LaGrosseBertha' -new -key $serverName.key -sha256 -out $serverName.csr
+	openssl req -x509 -days 3650 -sha256 -key $serverName.key -in $serverName.csr -out $serverName.crt
 	echo "[SCRIPT nginx] SSL chmod"
 	chmod 644 /etc/nginx/ssl/*.crt
 	chmod 640 /etc/nginx/ssl/*.key
@@ -160,7 +161,7 @@ ssh $server << EOF
 EOF
 
 for unixpass_idx in ${!unixpass[@]}; do
-ssh $server << EOF
+ssh $serverIP << EOF
 	echo "[SCRIPT CONF ${users[$unixpass_idx]}] BEGIN add user"
 	useradd --shell /bin/bash --create-home ${users[$unixpass_idx]}
 	echo "[SCRIPT CONF ${users[$unixpass_idx]}] SET unix passwd"
@@ -174,9 +175,9 @@ ssh $server << EOF
 	chown --recursive ${users[$unixpass_idx]}:${users[$unixpass_idx]} /home/${users[$unixpass_idx]}
 	chmod 755 /home/${users[$unixpass_idx]}
 	echo "[SCRIPT CONF ${users[$unixpass_idx]}] htpasswd"
-	htpasswd -b /etc/nginx/auth/seedbox_auth ${users[$unixpass_idx]} ${htpass[$unixpass_idx]}
+	htpasswd -b /etc/nginx/auth/$serverName_auth ${users[$unixpass_idx]} ${htpass[$unixpass_idx]}
 	echo "[SCRIPT CONF ${users[$unixpass_idx]}] chown and chmod for nginx"
-	chmod 777 /etc/nginx/auth/seedbox_auth
+	chmod 777 /etc/nginx/auth/$serverName_auth
 	chown www-data:www-data /etc/nginx/auth/*
 	echo "[SCRIPT CONF ${users[$unixpass_idx]}] rutorrent config"
 	mkdir /var/www/html/rutorrent/conf/users/${users[$unixpass_idx]}
@@ -193,7 +194,7 @@ EOF
 echo "PROCESS for ${users[$unixpass_idx]} done";
 done
 
-ssh $server << EOF
+ssh $serverIP << EOF
 	echo "[SCRIPT nginx] chow auth"
 	chown www-data:www-data /etc/nginx/auth/*
 	echo "[SCRIPT rtorrent] chow rtorrent"
